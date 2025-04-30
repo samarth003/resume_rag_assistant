@@ -17,7 +17,7 @@ class vector_store():
     def create_vectorstore(self, resume_text, jd_text):
         '''
         Embed each chunk from strings, normalize the embeddings 
-        and build FAISS index 
+        and build FAISS index
         '''
         #split text to overlapping chunks 
         resume_chunks = [{"text" : chunk, "source" : "resume"} for chunk in parser.split_text(resume_text)]
@@ -55,12 +55,12 @@ class vector_store():
         return results
 
 
-if __name__ == "__main__":
-    with open("fakepath\xyz.pdf", "rb") as file_name:
-        r_text = parser.extract_text(file_name)
-    with open("fakepath\sample.pdf", "rb") as f_name:
-        j_text = parser.extract_text(f_name)
+# if __name__ == "__main__":
+#     with open("fakepath\xyz.pdf", "rb") as file_name:
+#         r_text = parser.extract_text(file_name)
+#     with open("fakepath\sample.pdf", "rb") as f_name:
+#         j_text = parser.extract_text(f_name)
     
-    vs = vector_store()
-    vs.create_vectorstore(resume_text=r_text, jd_text=j_text)
-    print(vs.query_vectorstore("RTOS"))
+#     vs = vector_store()
+#     vs.create_vectorstore(resume_text=r_text, jd_text=j_text)
+#     print(vs.query_vectorstore("RTOS"))
