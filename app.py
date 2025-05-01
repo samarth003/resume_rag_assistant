@@ -10,7 +10,7 @@ class gradio_app():
         self.vs = vsf.vector_store()
         self.generator = pipeline(
             "text2text-generation",
-            model="google/flan/t5-base",
+            model="google/flan-t5-base",
             use_auth_token=hf_token,
             device=0 if torch.cuda.is_available() else -1,
         )
