@@ -8,7 +8,7 @@ def extract_text(file_name):
     '''
     #file parser - PDF
     text = ""
-    with fitz.open(stream=file_name.read(), filename="pdf") as document:
+    with fitz.open(filename=file_name) as document:
         for page in document:
             text += page.get_text()
     return text.strip()
