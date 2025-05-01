@@ -1,10 +1,19 @@
 import gradio as gr
 import vectorstore_faiss as vsf
 import resume_utils as parser
+from transformers import pipeline
+import torch, os, threading
 
 class gradio_app():
     def __init__(self):
+        hf_token = os.environ.get("HF_Token")
         self.vs = vsf.vector_store()
+        self.generator = pipeline(
+            "text-generation",
+            model="mistralai/Mistral-7B-Instruct-v0.1",
+            use_auth_token=hf_token,
+            device=0 if torch.cuda.is_available() else -1,
+        )
     
     def upload_files(self, resume_file, jd_file):
         '''
@@ -21,18 +30,47 @@ class gradio_app():
         except Exception as e:
             return f"Error during upload: {e}"
     
-    def ask_question(self, user_query):
+    def safe_generate(self, user_prompt, timeout=45):
+        result = ["Generating response ..."]
+        def run():
+            llm_response = self.generator(user_prompt, max_new_tokens=256,
+                                 do_sample=True, temperature=0.7)
+            result[0] = llm_response[0]['generated_text']
+        t = threading.Thread(target=run)
+        t.start()
+        t.join(timeout=timeout)
+        if t.is_alive():
+            return "Model took too long to respond. Try again."
+        return result[0]
+    
+    def generate_answer(self, user_query):
         '''
-        User queries and search operation is triggered 
-        returning with the formatted output
-        user_query : user's related career question
+        Retrieve top chunks from vectorstore
+        Build contextual prompt
+        Runs through Mistral LLM to get response 
         '''
-        results = self.vs.query_vectorstore(query=user_query)
-        formatted = "\n\n".join([
-            f"**Source:** {r['source'].upper()}\n**Score:** {r['score']}\n{r['text']}" 
-            for r in results
-        ])
-        return formatted
+        top_chunks = self.vs.query_vectorstore(query=user_query)
+        if not top_chunks:
+            return "No relevant context found to answer your question"
+        
+        context = "\n".join([chunk["text"] for chunk in top_chunks])
+
+        prompt = f"""You are a helpful career assistant.
+
+
+        Here are some excerpts from the user's resume and job description:
+
+
+        {context}
+
+
+        Now, answer the user's question as clearly as possible: 
+
+        "{user_query}"
+
+        """
+        
+        return self.safe_generate(user_prompt=prompt)
     
     def gradio_upload_IF(self):
         '''
@@ -54,11 +92,11 @@ class gradio_app():
         Interface for user queries
         '''
         self.query_interface = gr.Interface(
-            fn=self.ask_question,
+            fn=self.generate_answer,
             inputs=gr.Textbox(label="Ask a Question", placeholder="e.g., What skills am I missing?"),
             outputs="text",
-            title="Step 2: Ask Career Questions",
-            description="Query your resume and job description for insights.",
+            title="Step 2: Get Career Insights",
+            description="Ask questions like skill gaps, resume tips or keyword matches.",
             examples=[
                 ["What skills am I missing?"],
                 ["Which job keywords are not in my resume?"],
