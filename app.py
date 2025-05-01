@@ -49,6 +49,8 @@ class gradio_app():
         Build contextual prompt
         Runs through LLM to get response 
         '''
+        if not hasattr(self.vs, "faiss_index"):
+            return "Please upload resume and JD first."
         top_chunks = self.vs.query_vectorstore(query=user_query)
         if not top_chunks:
             return "No relevant context found to answer your question"
@@ -97,8 +99,9 @@ class gradio_app():
                 ["What skills am I missing?"],
                 ["Which job keywords are not in my resume?"],
                 ["Suggest a better resume summary for this job."]
-            ]
-        )        
+            ],
+            cache_examples=False
+        )
 
     def gradio_IF_launch(self):
         '''
