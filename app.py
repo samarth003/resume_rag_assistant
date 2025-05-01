@@ -9,8 +9,8 @@ class gradio_app():
         hf_token = os.environ.get("HF_Token")
         self.vs = vsf.vector_store()
         self.generator = pipeline(
-            "text-generation",
-            model="mistralai/Mistral-7B-Instruct-v0.1",
+            "text2text-generation",
+            model="google/flan/t5-base",
             use_auth_token=hf_token,
             device=0 if torch.cuda.is_available() else -1,
         )
@@ -47,7 +47,7 @@ class gradio_app():
         '''
         Retrieve top chunks from vectorstore
         Build contextual prompt
-        Runs through Mistral LLM to get response 
+        Runs through LLM to get response 
         '''
         top_chunks = self.vs.query_vectorstore(query=user_query)
         if not top_chunks:
@@ -55,18 +55,14 @@ class gradio_app():
         
         context = "\n".join([chunk["text"] for chunk in top_chunks])
 
-        prompt = f"""You are a helpful career assistant.
+        prompt = f"""Answer the following question using the context below.
 
-
-        Here are some excerpts from the user's resume and job description:
-
-
+        Context:
         {context}
 
 
-        Now, answer the user's question as clearly as possible: 
-
-        "{user_query}"
+        Question:
+        {user_query}
 
         """
         
