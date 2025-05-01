@@ -1,0 +1,6 @@
+gradio
+transformers
+sentence-transformers
+faiss-cpu
+torch
+fitz
