@@ -4,16 +4,25 @@ import resume_utils as parser
 from transformers import pipeline
 import torch, os, threading
 
+GATED = False
+
 class gradio_app():
     def __init__(self):
-        hf_token = os.environ.get("HF_Token")
         self.vs = vsf.vector_store()
-        self.generator = pipeline(
-            "text2text-generation",
-            model="google/flan-t5-base",
-            use_auth_token=hf_token,
-            device=0 if torch.cuda.is_available() else -1,
-        )
+        if GATED:
+            hf_token = os.environ.get("HF_Token")
+            self.generator = pipeline(
+                "text-generation",
+                model="mistralai/Mistral-7B-Instruct-v0.1",
+                use_auth_token=hf_token,
+                device=0 if torch.cuda.is_available() else -1,
+            )
+        else:
+            self.generator = pipeline(
+                "text2text-generation",
+                model="google/flan-t5-base",
+                device=0 if torch.cuda.is_available() else -1,
+            )         
     
     def upload_files(self, resume_file, jd_file):
         '''
@@ -31,17 +40,23 @@ class gradio_app():
             return f"Error during upload: {e}"
     
     def safe_generate(self, user_prompt, timeout=45):
-        result = ["Generating response ..."]
+        result = {"done" : False, "value" : "Generating response..."}
         def run():
-            llm_response = self.generator(user_prompt, max_new_tokens=256,
-                                 do_sample=True, temperature=0.7)
-            result[0] = llm_response[0]['generated_text']
+            try:
+                llm_response = self.generator(user_prompt, max_new_tokens=256,
+                                              do_sample=True, temperature=0.7)
+                result["value"] = llm_response[0]['generated_text']
+            except Exception as e:
+                result["value"] = f"Error during generation : {e}"
+            result["done"] = True
+
         t = threading.Thread(target=run)
         t.start()
         t.join(timeout=timeout)
-        if t.is_alive():
+
+        if not result["done"]:
             return "Model took too long to respond. Try again."
-        return result[0]
+        return result["value"]
     
     def generate_answer(self, user_query):
         '''
@@ -57,16 +72,34 @@ class gradio_app():
         
         context = "\n".join([chunk["text"] for chunk in top_chunks])
 
-        prompt = f"""Answer the following question using the context below.
-
-        Context:
-        {context}
+        if GATED:
+            prompt = f"""You are a helpful career assistant.
 
 
-        Question:
-        {user_query}
+            Here are some excerpts from the user's resume and job description:
 
-        """
+
+            {context}
+
+
+            Now, answer the user's question as clearly as possible: 
+
+            "{user_query}"
+
+            """
+
+        else:
+
+            prompt = f"""Answer the following question using the context below.
+
+            Context:
+            {context}
+
+
+            Question:
+            {user_query}
+
+            """
         
         return self.safe_generate(user_prompt=prompt)
     
