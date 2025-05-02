@@ -1,28 +1,26 @@
 import gradio as gr
-import vectorstore_faiss as vsf
-import resume_utils as parser
 from transformers import pipeline
+from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch, os, threading
 
-GATED = False
+import vectorstore_faiss as vsf
+import resume_utils as parser
+import promptbuilder as pb
+
 
 class gradio_app():
     def __init__(self):
+        model_id = "meta-llama/Llama-3.2-3B-Instruct"
         self.vs = vsf.vector_store()
-        if GATED:
-            hf_token = os.environ.get("HF_Token")
-            self.generator = pipeline(
-                "text-generation",
-                model="mistralai/Mistral-7B-Instruct-v0.1",
-                use_auth_token=hf_token,
-                device=0 if torch.cuda.is_available() else -1,
-            )
-        else:
-            self.generator = pipeline(
-                "text2text-generation",
-                model="google/flan-t5-base",
-                device=0 if torch.cuda.is_available() else -1,
-            )         
+        hf_token = os.environ.get("HF_TOKEN")
+        tokenizer = AutoTokenizer.from_pretrained(model_id, use_auth_token = hf_token)
+        model = AutoModelForCausalLM.from_pretrained(model_id, use_auth_token = hf_token)
+        self.generator = pipeline(
+            "text-generation",
+            model=model,
+            tokenizer=tokenizer,
+            device=0 if torch.cuda.is_available() else -1,
+        )       
     
     def upload_files(self, resume_file, jd_file):
         '''
@@ -70,36 +68,10 @@ class gradio_app():
         if not top_chunks:
             return "No relevant context found to answer your question"
         
-        context = "\n".join([chunk["text"] for chunk in top_chunks])
+        r_context = "\n".join([chunk["text"] for chunk in top_chunks if chunk["source"]=="resume"])
+        jd_context = "\n".join([chunk["text"] for chunk in top_chunks if chunk["source"]=="job"])
 
-        if GATED:
-            prompt = f"""You are a helpful career assistant.
-
-
-            Here are some excerpts from the user's resume and job description:
-
-
-            {context}
-
-
-            Now, answer the user's question as clearly as possible: 
-
-            "{user_query}"
-
-            """
-
-        else:
-
-            prompt = f"""Answer the following question using the context below.
-
-            Context:
-            {context}
-
-
-            Question:
-            {user_query}
-
-            """
+        prompt = pb.build_prompt(user_query=user_query, resume_chunks=r_context, jd_chunks=jd_context)
         
         return self.safe_generate(user_prompt=prompt)
     
