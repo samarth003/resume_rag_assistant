@@ -7,6 +7,7 @@ import vectorstore_faiss as vsf
 import resume_utils as parser
 import promptbuilder as pb
 
+INFERENCE_TEST = False
 
 class gradio_app():
     def __init__(self):
@@ -20,7 +21,14 @@ class gradio_app():
             model=model,
             tokenizer=tokenizer,
             device=0 if torch.cuda.is_available() else -1,
-        )       
+        )
+        if INFERENCE_TEST:
+            try:
+                print("Running model warm up test...")
+                test_out = self.generator("Say hello.", max_new_tokens=10)
+                print("Inference success", test_out[0]['generated_text'])
+            except Exception as e:
+                print(f"Inference failed: {e}")
     
     def upload_files(self, resume_file, jd_file):
         '''
@@ -37,12 +45,15 @@ class gradio_app():
         except Exception as e:
             return f"Error during upload: {e}"
     
-    def safe_generate(self, user_prompt, timeout=45):
+    def safe_generate(self, user_prompt, timeout=120):
         result = {"done" : False, "value" : "Generating response..."}
         def run():
             try:
+                print(f"[DEBUG] Calling LLM...")
                 llm_response = self.generator(user_prompt, max_new_tokens=256,
                                               do_sample=True, temperature=0.7)
+                print(f"[DEBUG] LLM responded", llm_response[0]['generated_text'][:300])
+
                 result["value"] = llm_response[0]['generated_text']
             except Exception as e:
                 result["value"] = f"Error during generation : {e}"
@@ -51,6 +62,9 @@ class gradio_app():
         t = threading.Thread(target=run)
         t.start()
         t.join(timeout=timeout)
+
+        print(f"[DEBUG] Thread Finished: {result['done']}")
+        print(f"[DEBUG] Result value : {result['value'][:200]}")
 
         if not result["done"]:
             return "Model took too long to respond. Try again."
@@ -62,18 +76,25 @@ class gradio_app():
         Build contextual prompt
         Runs through LLM to get response 
         '''
-        if not hasattr(self.vs, "faiss_index"):
-            return "Please upload resume and JD first."
-        top_chunks = self.vs.query_vectorstore(query=user_query)
-        if not top_chunks:
-            return "No relevant context found to answer your question"
-        
-        r_context = "\n".join([chunk["text"] for chunk in top_chunks if chunk["source"]=="resume"])
-        jd_context = "\n".join([chunk["text"] for chunk in top_chunks if chunk["source"]=="job"])
+        if INFERENCE_TEST:
+            try:
+                response = self.generator("What is AI?", max_new_tokens=30)
+                return response[0]['generated_text']
+            except Exception as e:
+                return f"Error during direct inference: {e}"
+        else:
+            if not hasattr(self.vs, "faiss_index"):
+                return "Please upload resume and JD first."
+            top_chunks = self.vs.query_vectorstore(query=user_query)
+            if not top_chunks:
+                return "No relevant context found to answer your question"
+            
+            r_context = [chunk["text"] for chunk in top_chunks if chunk["source"]=="resume"]
+            jd_context = [chunk["text"] for chunk in top_chunks if chunk["source"]=="job"]
 
-        prompt = pb.build_prompt(user_query=user_query, resume_chunks=r_context, jd_chunks=jd_context)
-        
-        return self.safe_generate(user_prompt=prompt)
+            prompt = pb.build_prompt(user_query=user_query, resume_chunks=r_context, jd_chunks=jd_context)
+            
+            return self.safe_generate(user_prompt=prompt)
     
     def gradio_upload_IF(self):
         '''
