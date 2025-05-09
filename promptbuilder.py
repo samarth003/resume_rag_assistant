@@ -1,5 +1,7 @@
 import re, textwrap
 
+MAX_CHUNKS = 4000
+
 def is_comparative_query(user_query):
     query = user_query.lower()
     keywords = [
@@ -18,10 +20,10 @@ def build_prompt(user_query, resume_chunks, jd_chunks=None):
         ]
     if not resume_chunks:
         return f"Resume content is empty. Cannot generate an answer."
-    r_text = "\n".join(resume_chunks)
+    r_text = "\n".join(resume_chunks[:MAX_CHUNKS])
 
     if is_comparative_query(user_query=user_query) and jd_chunks:
-        jd_text = "\n".join(jd_chunks)
+        jd_text = "\n".join(jd_chunks[:MAX_CHUNKS])
         return textwrap.dedent(f"""
         Compare the user's resume and job description below:
 
