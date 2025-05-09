@@ -14,12 +14,12 @@ class gradio_app():
         model_id = "meta-llama/Llama-3.2-3B-Instruct"
         self.vs = vsf.vector_store()
         hf_token = os.environ.get("HF_TOKEN")
-        tokenizer = AutoTokenizer.from_pretrained(model_id, use_auth_token = hf_token)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id, use_auth_token = hf_token)
         model = AutoModelForCausalLM.from_pretrained(model_id, use_auth_token = hf_token)
         self.generator = pipeline(
             "text-generation",
             model=model,
-            tokenizer=tokenizer,
+            tokenizer=self.tokenizer,
             device=0 if torch.cuda.is_available() else -1,
         )
         if INFERENCE_TEST:
@@ -47,14 +47,19 @@ class gradio_app():
     
     def safe_generate(self, user_prompt, timeout=120):
         result = {"done" : False, "value" : "Generating response..."}
+        output_keys = ["Answer:", "Solution:", "Response:"]
         def run():
             try:
                 print(f"[DEBUG] Calling LLM...")
-                llm_response = self.generator(user_prompt, max_new_tokens=256,
+                llm_response = self.generator(user_prompt, max_new_tokens=128,
                                               do_sample=True, temperature=0.7)
                 print(f"[DEBUG] LLM responded", llm_response[0]['generated_text'][:300])
 
-                result["value"] = llm_response[0]['generated_text']
+                llm_response[0]['generated_text']
+                for key in output_keys:
+                    if key in llm_response[0]['generated_text']:
+                        result["value"] = llm_response[0]['generated_text'].split(key)[1].strip()
+                
             except Exception as e:
                 result["value"] = f"Error during generation : {e}"
             result["done"] = True
@@ -93,8 +98,9 @@ class gradio_app():
             jd_context = [chunk["text"] for chunk in top_chunks if chunk["source"]=="job"]
 
             prompt = pb.build_prompt(user_query=user_query, resume_chunks=r_context, jd_chunks=jd_context)
-            
-            return self.safe_generate(user_prompt=prompt)
+            prompt_tokens = self.tokenizer.encode(prompt, truncation=True, max_length=2048)
+            user_prompt = self.tokenizer.decode(prompt_tokens)
+            return self.safe_generate(user_prompt=user_prompt)
     
     def gradio_upload_IF(self):
         '''
