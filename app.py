@@ -1,11 +1,10 @@
 import gradio as gr
-from transformers import pipeline
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch, os, threading
+import os, threading
 
 import vectorstore_faiss as vsf
 import resume_utils as parser
 import promptbuilder as pb
+from base_model import llm_generator
 
 INFERENCE_TEST = False
 
@@ -14,18 +13,11 @@ class gradio_app():
         model_id = "meta-llama/Llama-3.2-3B-Instruct"
         self.vs = vsf.vector_store()
         hf_token = os.environ.get("HF_TOKEN")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id, use_auth_token = hf_token)
-        model = AutoModelForCausalLM.from_pretrained(model_id, use_auth_token = hf_token)
-        self.generator = pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=self.tokenizer,
-            device=0 if torch.cuda.is_available() else -1,
-        )
+        self.llm = llm_generator(model_id=model_id, hf_token=hf_token)
         if INFERENCE_TEST:
             try:
                 print("Running model warm up test...")
-                test_out = self.generator("Say hello.", max_new_tokens=10)
+                test_out = self.llm.llm_generate("Say hello.", max_new_tokens=10)
                 print("Inference success", test_out[0]['generated_text'])
             except Exception as e:
                 print(f"Inference failed: {e}")
@@ -45,20 +37,16 @@ class gradio_app():
         except Exception as e:
             return f"Error during upload: {e}"
     
-    def safe_generate(self, user_prompt, timeout=120):
+    def safe_generate(self, user_prompt, timeout=150):
         result = {"done" : False, "value" : "Generating response..."}
-        output_keys = ["Answer:", "Solution:", "Response:"]
         def run():
             try:
                 print(f"[DEBUG] Calling LLM...")
-                llm_response = self.generator(user_prompt, max_new_tokens=128,
-                                              do_sample=True, temperature=0.7)
+                print("[DEBUG] Prompt:\n", user_prompt[:1000])
+                llm_response = self.llm.llm_generate(prompt=user_prompt)
                 print(f"[DEBUG] LLM responded", llm_response[0]['generated_text'][:300])
 
-                llm_response[0]['generated_text']
-                for key in output_keys:
-                    if key in llm_response[0]['generated_text']:
-                        result["value"] = llm_response[0]['generated_text'].split(key)[1].strip()
+                result["value"] = llm_response[0]['generated_text'].strip()
                 
             except Exception as e:
                 result["value"] = f"Error during generation : {e}"
@@ -83,7 +71,7 @@ class gradio_app():
         '''
         if INFERENCE_TEST:
             try:
-                response = self.generator("What is AI?", max_new_tokens=30)
+                response = self.llm.llm_generate("What is AI?", max_new_tokens=30)
                 return response[0]['generated_text']
             except Exception as e:
                 return f"Error during direct inference: {e}"
@@ -98,8 +86,8 @@ class gradio_app():
             jd_context = [chunk["text"] for chunk in top_chunks if chunk["source"]=="job"]
 
             prompt = pb.build_prompt(user_query=user_query, resume_chunks=r_context, jd_chunks=jd_context)
-            prompt_tokens = self.tokenizer.encode(prompt, truncation=True, max_length=2048)
-            user_prompt = self.tokenizer.decode(prompt_tokens)
+            prompt_tokens = self.llm.llm_encode(prompt=prompt)
+            user_prompt = self.llm.llm_decode(prompt_tokens=prompt_tokens)
             return self.safe_generate(user_prompt=user_prompt)
     
     def gradio_upload_IF(self):
