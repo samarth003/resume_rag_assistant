@@ -5,7 +5,7 @@ MAX_CHUNKS = 4000
 def is_comparative_query(user_query):
     query = user_query.lower()
     keywords = [
-        "missing", "compare", "not in my resume", "lacking",
+        "missing", "compare", "not in my resume", "lacking", "need",
         "gaps", "not mentioned", "difference", "absent", "require"
     ]
     return any(term in query for term in keywords)
@@ -25,23 +25,24 @@ def build_prompt(user_query, resume_chunks, jd_chunks=None):
     if is_comparative_query(user_query=user_query) and jd_chunks:
         jd_text = "\n".join(jd_chunks[:MAX_CHUNKS])
         return textwrap.dedent(f"""
-        Compare the user's resume and job description below:
+        Given the resume and job description context, answer the following question below.
 
-        Resume:
+        Resume Context:
         {r_text}
 
-        Job Description:
+        Job Description Context:
         {jd_text}
 
         Question:
         {user_query}
 
         Instruction:
-        List specific skills present in job description but missing in resume.
+        Answer should only be specific to the question asked. Do not assume.
         """)
     else:
         return textwrap.dedent(f"""
-        You are an assistant evaluating user's resume.
+        You are an assistant evaluating user's resume. 
+        Given the resume context, answer the following question below.
 
         Here is the resume context:
         {r_text}
@@ -50,5 +51,5 @@ def build_prompt(user_query, resume_chunks, jd_chunks=None):
         {user_query}
 
         Instruction:
-        Only answer using the resume above. If something is not explicitly mentioned, say so clearly and do not assume.
+        Answer should only be specific to the question asked. Do not assume.
         """)
